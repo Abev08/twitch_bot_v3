@@ -131,7 +131,7 @@ fn update() {
                   temp = index.unwrap();
                   header = &msg[..temp];
                   body = &msg[(temp + 11 + channel.len())..]; // 11 == "PRIVMSG # :".len()
-                  get_metadata_data(header, &mut metadata);
+                  get_message_metadata(header, &mut metadata);
 
                   // Print the message
                   if metadata.custrom_reward_id.len() > 0 {
@@ -162,7 +162,7 @@ fn update() {
                     temp = index.unwrap();
                     header = &msg[..temp];
                     body = &msg[(temp + 12 + channel.len())..]; // 12 == "USERNOTICE #".len()
-                    get_metadata_data(header, &mut metadata);
+                    get_message_metadata(header, &mut metadata);
 
                     // Get message type
                     let mut msg_type: &str = Default::default();
@@ -265,7 +265,7 @@ fn update() {
   }
 }
 
-fn get_metadata_data(header: &str, metadata: &mut Metadata) {
+fn get_message_metadata(header: &str, metadata: &mut Metadata) {
   let mut index: Option<usize>;
   let (mut temp, mut temp2): (usize, usize);
 
