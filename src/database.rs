@@ -33,8 +33,8 @@ pub fn init() {
       log::error!("{}", err);
       return;
     }
-    Ok(con) => {
-      connection = con;
+    Ok(conn) => {
+      connection = conn;
       log::info!("Connected to database");
     }
   }
@@ -49,24 +49,24 @@ pub fn init() {
   }
 
   // Reads the current state of the key from the database or if the key is not found creates it in the database
-  let mut secrets = DATA.lock().unwrap();
-  secrets.push(DbRecord::new(Keys::Version));
-  secrets.push(DbRecord::new(Keys::TwitchOAuth));
-  secrets.push(DbRecord::new(Keys::TwitchOAuthRefresh));
+  let mut data = DATA.lock().unwrap();
+  data.push(DbRecord::new(Keys::Version));
+  data.push(DbRecord::new(Keys::TwitchOAuth));
+  data.push(DbRecord::new(Keys::TwitchOAuthRefresh));
 
   let mut ok: bool;
-  for i in 0..secrets.len() {
+  for i in 0..data.len() {
     ok = false;
     connection
       .iterate(
         format!(
           "SELECT Value FROM Config WHERE Name = '{:?}' LIMIT 1;",
-          secrets[i].key
+          data[i].key
         ),
         |row| -> bool {
           if row[0].1.is_some() {
-            secrets[i].value.clear();
-            secrets[i].value.push_str(row[0].1.unwrap());
+            data[i].value.clear();
+            data[i].value.push_str(row[0].1.unwrap());
           }
           ok = true;
           return true;
@@ -77,12 +77,12 @@ pub fn init() {
       connection
         .execute(format!(
           "INSERT INTO Config (Name, Value) VALUES ('{:?}', '');",
-          secrets[i].key
+          data[i].key
         ))
         .expect("Something went wrong when inserting data into database table");
     }
 
-    // println!("{:?} = {}", secrets[i].key, secrets[i].value);
+    // println!("{:?} = {}", data[i].key, data[i].value);
   }
 }
 
@@ -96,4 +96,38 @@ pub fn get_data(key: Keys) -> String {
     }
   }
   return ret;
+}
+
+#[allow(dead_code)]
+pub fn update_database_value(key: Keys, value: String) {
+  match sqlite::Connection::open(FILE) {
+    Err(err) => {
+      log::error!("{}", err);
+      return;
+    }
+    Ok(conn) => {
+      match (conn as Connection).execute(format!(
+        "UPDATE Config SET Value='{}' WHERE Name='{:?}';",
+        value, key
+      )) {
+        Err(err) => log::warn!(
+          "Couldn't update the value of the key '{:?}'. Error: {:?}",
+          key,
+          err
+        ),
+        Ok(()) => {
+          // Update the value in DATA array
+          let mut data = DATA.lock().unwrap();
+          for i in 0..data.len() {
+            if data[i].key == key {
+              data[i].value.clear();
+              data[i].value.push_str(&value);
+              break;
+            }
+          }
+          log::info!("Updated value of key '{:?}' in the database", key);
+        }
+      };
+    }
+  }
 }
