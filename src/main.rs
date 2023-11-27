@@ -1,6 +1,7 @@
 use std::{io::Write, thread, time::Duration};
 
 mod chat;
+mod database;
 mod secrets;
 
 fn main() {
@@ -26,6 +27,7 @@ fn main() {
     .filter_level(log::LevelFilter::Trace)
     .init();
 
+  database::init();
   secrets::parse();
   chat::start();
 
