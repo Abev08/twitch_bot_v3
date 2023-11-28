@@ -7,7 +7,7 @@ use std::{
   time::{Duration, SystemTime},
 };
 
-use crate::secrets;
+use crate::{secrets, database};
 
 /// Message metadata
 struct Metadata {
@@ -38,12 +38,12 @@ pub fn start() {
 }
 
 fn update() {
-  let channel = secrets::CHANNEL.lock().unwrap().clone();
+  let channel = secrets::get_data(secrets::Keys::Channel);
   if channel.len() == 0 {
     log::error!("Missing channel name");
     return;
   }
-  let (mut twitch_id, mut twitch_oauth) = (String::new(), String::new());
+  let (mut twitch_name, mut twitch_oauth) = (String::new(), String::new());
   let mut buffer = [0u8; 16384]; // Max IRC message is 4096 bytes? let's allocate 4 times that, 2 times max message length wasn't enaugh for really fast chats
   let mut temp: usize;
   let (mut msg_start, mut msg_end): (usize, usize);
@@ -69,10 +69,10 @@ fn update() {
     } else {
       log::info!("Chat bot connected");
 
-      twitch_id.clear();
-      twitch_id.push_str(&secrets::TWITCH.lock().unwrap().id);
+      twitch_name.clear();
+      twitch_name.push_str(&secrets::get_data(secrets::Keys::TwitchName));
       twitch_oauth.clear();
-      twitch_oauth.push_str(&secrets::TWITCH.lock().unwrap().pass); // FIXME: change "pass" to "token" after implementing access tokens 
+      twitch_oauth.push_str(&database::get_data(database::Keys::TwitchOAuth));
 
       let mut stream = client.unwrap();
       stream
@@ -82,7 +82,7 @@ fn update() {
         .write(format!("PASS oauth:{twitch_oauth}\r\n").as_bytes())
         .expect("Something went wrong when sending the message");
       stream
-        .write(format!("NICK {twitch_id}\r\n").as_bytes())
+        .write(format!("NICK {twitch_name}\r\n").as_bytes())
         .expect("Something went wrong when sending the message");
       stream
         .write(format!("JOIN #{channel},#{channel}\r\n").as_bytes())
@@ -355,7 +355,7 @@ fn get_message_metadata(header: &str, metadata: &mut Metadata) {
 #[allow(dead_code)]
 pub fn send_message(message: &String) {
   let mut msg = String::from("PRIVMSG #");
-  msg.push_str(&secrets::CHANNEL.lock().unwrap());
+  msg.push_str(&secrets::get_data(secrets::Keys::Channel));
   msg.push_str(" :");
   msg.push_str(message);
   msg.push_str("\r\n");
@@ -368,7 +368,7 @@ pub fn send_message_response(message: &String, message_id: &String) {
   let mut msg = String::from("@reply-parent-msg-id=");
   msg.push_str(message_id);
   msg.push_str(" PRIVMSG #");
-  msg.push_str(&secrets::CHANNEL.lock().unwrap());
+  msg.push_str(&secrets::get_data(secrets::Keys::Channel));
   msg.push_str(" :");
   msg.push_str(message);
   msg.push_str("\r\n");

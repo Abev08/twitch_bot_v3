@@ -5,26 +5,39 @@ use std::{
   sync::Mutex,
 };
 
-static FILE: &str = "secrets.ini";
-
-pub struct OAuthStuff {
-  pub id: String,
-  pub pass: String,
-  pub token: String,
-  pub refresh_token: String,
+struct Record {
+  key: Keys,
+  value: String,
 }
 
-pub static TWITCH: Mutex<OAuthStuff> = Mutex::new(OAuthStuff {
-  id: String::new(),
-  pass: String::new(),
-  token: String::new(),
-  refresh_token: String::new(),
-});
+impl Record {
+  pub fn new(key: Keys) -> Self {
+    return Self {
+      key: key,
+      value: String::new(),
+    };
+  }
+}
 
-pub static CHANNEL: Mutex<String> = Mutex::new(String::new());
+#[derive(Debug, PartialEq)]
+pub enum Keys {
+  Channel,
+  TwitchName,
+  TwitchID,
+  TwitchPassowrd,
+}
+
+static FILE: &str = "secrets.ini";
+static DATA: Mutex<Vec<Record>> = Mutex::new(Vec::new());
 
 pub fn parse() {
   log::info!("Parsing secrets file");
+  let mut data = DATA.lock().unwrap();
+  data.push(Record::new(Keys::Channel));
+  data.push(Record::new(Keys::TwitchID));
+  data.push(Record::new(Keys::TwitchName));
+  data.push(Record::new(Keys::TwitchPassowrd));
+
   let (mut key, mut value): (&str, &str);
   let mut index: usize;
 
@@ -60,13 +73,14 @@ pub fn parse() {
       }
       value = value.trim();
 
-      if key == "CHANNEL" {
-        let temp = value.to_lowercase();
-        CHANNEL.lock().unwrap().push_str(temp.as_str());
-      } else if key == "TWITCH_ID" {
-        TWITCH.lock().unwrap().id.push_str(value);
-      } else if key == "TWITCH_PASSWORD" {
-        TWITCH.lock().unwrap().pass.push_str(value);
+      if key == format!("{:?}", Keys::Channel) {
+        set_data(&mut data, Keys::Channel, &value.to_lowercase());
+      } else if key == format!("{:?}", Keys::TwitchName) {
+        set_data(&mut data, Keys::TwitchName, value);
+      } else if key == format!("{:?}", Keys::TwitchID) {
+        set_data(&mut data, Keys::TwitchID, value);
+      } else if key == format!("{:?}", Keys::TwitchPassowrd) {
+        set_data(&mut data, Keys::TwitchPassowrd, value);
       }
     }
   } else {
@@ -75,15 +89,37 @@ pub fn parse() {
   }
 }
 
+fn set_data(data: &mut Vec<Record>, key: Keys, value: &str) {
+  for i in 0..data.len() {
+    if data[i].key == key {
+      data[i].value.clear();
+      data[i].value.push_str(value);
+      return;
+    }
+  }
+}
+
+pub fn get_data(key: Keys) -> String {
+  let data = DATA.lock().unwrap();
+  let mut ret = String::new();
+  for i in 0..data.len() {
+    if data[i].key == key {
+      ret.push_str(&data[i].value);
+    }
+  }
+  return ret;
+}
+
 fn create_file() {
   log::info!("Creating new secrets file");
   let new_file = File::create(FILE);
   if new_file.is_ok() {
     let mut content = String::new();
-    content.push_str("CHANNEL = \n");
+    content.push_str(&format!("{:?} = \n", Keys::Channel));
     content.push_str("\n");
-    content.push_str("TWITCH_ID = \n");
-    content.push_str("TWITCH_PASSWORD = \n");
+    content.push_str(&format!("{:?} = \n", Keys::TwitchName));
+    content.push_str(&format!("{:?} = \n", Keys::TwitchID));
+    content.push_str(&format!("{:?} = \n", Keys::TwitchPassowrd));
 
     new_file
       .unwrap()

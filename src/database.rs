@@ -2,17 +2,17 @@ use std::sync::Mutex;
 
 use sqlite::Connection;
 
-pub struct DbRecord {
+struct Record {
   key: Keys,
   value: String,
 }
 
-impl DbRecord {
+impl Record {
   pub fn new(key: Keys) -> Self {
-    Self {
+    return Self {
       key: key,
       value: String::new(),
-    }
+    };
   }
 }
 
@@ -21,12 +21,20 @@ pub enum Keys {
   Version,
   TwitchOAuth,
   TwitchOAuthRefresh,
+  TwitchExpires,
 }
 
 static FILE: &str = ".db";
-static DATA: Mutex<Vec<DbRecord>> = Mutex::new(Vec::new());
+static DATA: Mutex<Vec<Record>> = Mutex::new(Vec::new());
 
 pub fn init() {
+  // Reads the current state of the key from the database or if the key is not found creates it in the database
+  let mut data = DATA.lock().unwrap();
+  data.push(Record::new(Keys::Version));
+  data.push(Record::new(Keys::TwitchOAuth));
+  data.push(Record::new(Keys::TwitchOAuthRefresh));
+  data.push(Record::new(Keys::TwitchExpires));
+
   let connection: Connection;
   match sqlite::Connection::open(FILE) {
     Err(err) => {
@@ -47,12 +55,6 @@ pub fn init() {
     }
     _ => {}
   }
-
-  // Reads the current state of the key from the database or if the key is not found creates it in the database
-  let mut data = DATA.lock().unwrap();
-  data.push(DbRecord::new(Keys::Version));
-  data.push(DbRecord::new(Keys::TwitchOAuth));
-  data.push(DbRecord::new(Keys::TwitchOAuthRefresh));
 
   let mut ok: bool;
   for i in 0..data.len() {
@@ -99,7 +101,7 @@ pub fn get_data(key: Keys) -> String {
 }
 
 #[allow(dead_code)]
-pub fn update_database_value(key: Keys, value: String) {
+pub fn update_value(key: Keys, value: String) {
   match sqlite::Connection::open(FILE) {
     Err(err) => {
       log::error!("{}", err);

@@ -1,5 +1,6 @@
 use std::{io::Write, thread, time::Duration};
 
+mod access_tokens;
 mod chat;
 mod database;
 mod secrets;
@@ -24,11 +25,13 @@ fn main() {
         record.args(),
       );
     })
-    .filter_level(log::LevelFilter::Trace)
+    .filter_level(log::LevelFilter::Info)
     .init();
 
   database::init();
   secrets::parse();
+  access_tokens::update();
+  
   chat::start();
 
   // Main loop?
