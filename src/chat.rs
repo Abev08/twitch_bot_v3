@@ -7,7 +7,7 @@ use std::{
   time::{Duration, SystemTime},
 };
 
-use crate::{secrets, database};
+use crate::{database, secrets};
 
 /// Message metadata
 struct Metadata {
@@ -60,6 +60,7 @@ fn update() {
     custrom_reward_id: String::new(),
     bits: String::new(),
   };
+  let mut data = String::new();
 
   loop {
     let client = TcpStream::connect("irc.chat.twitch.tv:6667");
@@ -99,11 +100,12 @@ fn update() {
           if temp > 0 {
             msg_start = 0;
             // data is whole received message, it may contain multiple messages
-            let data = std::str::from_utf8(&buffer[0..temp]).expect("Couldn't parse received data");
+            data.push_str(std::str::from_utf8(&buffer[..temp]).unwrap());
 
             // Loop through every message in data
             loop {
               if msg_start >= data.len() {
+                data.clear();
                 break;
               }
 
@@ -111,7 +113,12 @@ fn update() {
               index = data[msg_start..].find("\r\n");
               msg_end = match index {
                 Some(idx) => idx,
-                None => data.len(),
+                None => {
+                  let temp = String::from(&data[msg_start..]);
+                  data.clear();
+                  data.push_str(&temp);
+                  break;
+                }
               } + msg_start;
               if msg_end > data.len() {
                 msg_end = data.len();
@@ -129,8 +136,8 @@ fn update() {
                 if index.is_some() {
                   // Found the propper message, try to parse it
                   temp = index.unwrap();
-                  header = &msg[..temp];
-                  body = &msg[(temp + 11 + channel.len())..]; // 11 == "PRIVMSG # :".len()
+                  header = &msg[..temp].trim();
+                  body = &msg[(temp + 11 + channel.len())..].trim(); // 11 == "PRIVMSG # :".len()
                   get_message_metadata(header, &mut metadata);
 
                   // Print the message
@@ -160,8 +167,11 @@ fn update() {
                   if index.is_some() {
                     // Found the propper message, try to parse it
                     temp = index.unwrap();
-                    header = &msg[..temp];
-                    body = &msg[(temp + 12 + channel.len())..]; // 12 == "USERNOTICE #".len()
+                    header = &msg[..temp].trim();
+                    body = &msg[(temp + 12 + channel.len())..].trim(); // 12 == "USERNOTICE #".len()
+                    if body.starts_with(':') {
+                      body = &body[1..];
+                    }
                     get_message_metadata(header, &mut metadata);
 
                     // Get message type
@@ -177,26 +187,36 @@ fn update() {
 
                     // Print the message
                     if msg_type.eq("sub") || msg_type.eq("resub") {
-                      println!("> {} subscribed!{}", metadata.username, body);
+                      println!("> {} subscribed! {}", metadata.username, body);
                     } else if msg_type.eq("subgift") {
-                      println!("> {} gifted some subs!{}", metadata.username, body);
+                      println!("> {} gifted some subs! {}", metadata.username, body);
                     } else if msg_type.eq("submysterygift") {
                       println!(
-                        "> {} gifted some subs to random viewers!{}",
+                        "> {} gifted some subs to random viewers! {}",
                         metadata.username, body
                       );
                     } else if msg_type.eq("primepaidupgrade") {
                       println!(
-                        "> {} converted prime sub to standard sub!{}",
+                        "> {} converted prime sub to standard sub! {}",
+                        metadata.username, body
+                      );
+                    } else if msg_type.eq("giftpaidupgrade") {
+                      println!(
+                        "> {} continuing sub gifted by another chatter! {}",
+                        metadata.username, body
+                      );
+                    } else if msg_type.eq("communitypayforward") {
+                      println!(
+                        "> {} is paying forward sub gifted by another chatter! {}",
                         metadata.username, body
                       );
                     } else if msg_type.eq("announcement") {
-                      println!("> {} announced that{}", metadata.username, body);
+                      println!("> {} announced that {}", metadata.username, body);
                     } else if msg_type.eq("raid") {
-                      println!("> {} raided the channel!{}", metadata.username, body);
+                      println!("> {} raided the channel! {}", metadata.username, body);
                     } else if msg_type.eq("viewermilestone") {
                       println!(
-                        "> {} did something that fired viewer milestone!{}",
+                        "> {} did something that fired viewer milestone! {}",
                         metadata.username, body
                       );
                     } else {
@@ -228,8 +248,36 @@ fn update() {
                           println!("> {} got perma banned!", &msg[7..temp]);
                         }
                       } else {
-                        // Message separator not found, just print the message to the console
-                        println!("{}", msg);
+                        index = msg.find("NOTICE");
+                        if index.is_some() {
+                          // Get message type
+                          let mut msg_type: &str = Default::default();
+                          index = msg.find("msg-id=");
+                          if index.is_some() {
+                            temp = index.unwrap() + 7; // 7 == "msg-id=".len()
+                            index = msg[temp..].find(';');
+                            if index.is_some() {
+                              msg_type = &msg[temp..(index.unwrap() + temp)];
+                            } else {
+                              index = msg[temp..].find(' ');
+                              if index.is_some() {
+                                msg_type = &msg[temp..(index.unwrap() + temp)];
+                              }
+                            }
+                          }
+
+                          if msg_type.eq("emote_only_on") {
+                            println!("> This room is now in emote-only mode.");
+                          } else if msg_type.eq("emote_only_off") {
+                            println!("> This room is no longer in emote-only mode.");
+                          } else {
+                            // Message type not recognized - print the whole message
+                            println!("{}", msg);
+                          }
+                        } else {
+                          // Message separator not found, just print the message to the console
+                          println!("{}", msg);
+                        }
                       }
                     }
                   }

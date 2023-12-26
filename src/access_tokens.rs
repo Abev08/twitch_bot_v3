@@ -1,4 +1,9 @@
-use std::{io::Read, net::TcpListener, ops::Add, process::Command};
+use std::{
+  io::{Read, Write},
+  net::TcpListener,
+  ops::Add,
+  process::Command,
+};
 
 use crate::{database, secrets};
 
@@ -54,11 +59,17 @@ fn twitch_get_new(id: &String, pass: &String) {
   }
   let scope = s.replace(":", "%3A"); // Change to url encoded
 
-  let mut url = format!("https://id.twitch.tv/oauth2/authorize?client_id={}&redirect_uri=http://localhost:3000&response_type=code&scope={}",
-      id, scope
-    );
-  url = url.replace("&", "^&"); // Change to cmd encoded
+  let mut url = format!(
+    "https://id.twitch.tv/oauth2/authorize?\
+    client_id={}\
+    &redirect_uri=http://localhost:3000\
+    &response_type=code\
+    &scope={}",
+    id, scope
+  );
+  url = url.replace("&", "^&"); // Change to cmd encoded - the '&' symbol has to be escaped
 
+  log::info!("Requesting user authentication for Twitch");
   if cfg!(windows) {
     Command::new("cmd.exe")
       .arg("/C")
@@ -79,9 +90,24 @@ fn twitch_get_new(id: &String, pass: &String) {
   let listener = TcpListener::bind("localhost:3000").unwrap();
   for stream in listener.incoming() {
     let mut buf = String::new();
-    match stream.unwrap().read_to_string(&mut buf) {
+    let mut connection = stream.unwrap();
+    match connection.read_to_string(&mut buf) {
       Ok(_len) => {
         // println!("{}", buf);
+
+        // Send proper response
+        let contents = "<!doctype html><title>Hello, I'm in HACKERMANS</title>";
+        connection
+          .write_all(
+            format!(
+              "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+              contents.len(),
+              contents
+            )
+            .as_bytes(),
+          )
+          .expect("Response was not send correctly");
+        connection.flush().unwrap();
 
         // Find 'code' part
         match buf.find("?code=") {
@@ -109,6 +135,7 @@ fn twitch_get_new(id: &String, pass: &String) {
 
   // Parse the response
   if response.is_ok() {
+    log::info!("Acquired new Twitch access token");
     let resp: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
     let expiration = chrono::Local::now().add(chrono::Duration::seconds(
       resp["expires_in"].as_i64().unwrap(),
@@ -129,6 +156,7 @@ fn twitch_get_new(id: &String, pass: &String) {
 
 /// Refreshes the access tokens. Returns true if new token was acquired, otherwise false.
 fn twitch_refresh(id: &String, pass: &String, refresh_token: &String) -> bool {
+  log::info!("Refreshing Twitch access token");
   let response = ureq::post("https://id.twitch.tv/oauth2/token")
     .set("Content-Type", "application/x-www-form-urlencoded")
     .send_string(&format!(
@@ -142,7 +170,7 @@ fn twitch_refresh(id: &String, pass: &String, refresh_token: &String) -> bool {
 
   // Parse the response
   if response.is_ok() {
-    log::info!("Refreshed Twitch access token");
+    log::info!("Acquired new Twitch access token");
     let resp: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
     let expiration = chrono::Local::now().add(chrono::Duration::seconds(
       resp["expires_in"].as_i64().unwrap(),
