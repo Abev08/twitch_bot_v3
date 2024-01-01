@@ -100,7 +100,9 @@ fn update() {
           if temp > 0 {
             msg_start = 0;
             // data is whole received message, it may contain multiple messages
-            data.push_str(std::str::from_utf8(&buffer[..temp]).unwrap());
+            let d = String::from_utf8_lossy(&buffer[..temp]).into_owned(); // lossy conversion is needed because if the data contained a char outside of utf-8 range it will crash the program
+            data.push_str(&d);
+            drop(d);
 
             // Loop through every message in data
             loop {
@@ -189,7 +191,19 @@ fn update() {
                     if msg_type.eq("sub") || msg_type.eq("resub") {
                       println!("> {} subscribed! {}", metadata.username, body);
                     } else if msg_type.eq("subgift") {
-                      println!("> {} gifted some subs! {}", metadata.username, body);
+                      index = header.find("msg-param-recipient-display-name=");
+                      msg_type = &""; // Using msg_type as temp variable for receipent name
+                      if index.is_some() {
+                        temp = index.unwrap() + 33; // 33 == "msg-param-recipient-display-name=".len()
+                        index = header[temp..].find(';');
+                        if index.is_some() {
+                          msg_type = &header[temp..(index.unwrap() + temp)];
+                        }
+                      }
+                      println!(
+                        "> {} gifted sub to {}! {}",
+                        metadata.username, msg_type, body
+                      );
                     } else if msg_type.eq("submysterygift") {
                       println!(
                         "> {} gifted some subs to random viewers! {}",
@@ -270,6 +284,8 @@ fn update() {
                             println!("> This room is now in emote-only mode.");
                           } else if msg_type.eq("emote_only_off") {
                             println!("> This room is no longer in emote-only mode.");
+                          } else if msg_type.eq("followers_on_zero") {
+                            println!("> This room is now in followers-only mode.");
                           } else {
                             // Message type not recognized - print the whole message
                             println!("{}", msg);

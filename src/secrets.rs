@@ -30,6 +30,7 @@ pub enum Keys {
 static FILE: &str = "secrets.ini";
 static DATA: Mutex<Vec<Record>> = Mutex::new(Vec::new());
 
+/// Parses secrets.ini file
 pub fn parse() {
   log::info!("Parsing secrets file");
   let mut data = DATA.lock().unwrap();
