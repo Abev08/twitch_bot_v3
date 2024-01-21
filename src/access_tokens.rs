@@ -90,7 +90,7 @@ fn twitch_get_new(id: &String, pass: &String) {
 
   // Start the server and wait for user reaction
   let mut code = String::new();
-  let listener = TcpListener::bind("localhost:3000").unwrap();
+  let listener = TcpListener::bind("127.0.0.1:3000").unwrap();
   for stream in listener.incoming() {
     let mut buf = String::new();
     let mut connection = stream.unwrap();
@@ -99,7 +99,7 @@ fn twitch_get_new(id: &String, pass: &String) {
         // println!("{}", buf);
 
         // Send proper response
-        let contents = "<!doctype html><title>Hello, I'm in HACKERMANS</title>";
+        let contents = "<!DOCTYPE html><title>Hello, I'm in HACKERMANS</title>";
         connection
           .write_all(
             format!(
@@ -110,7 +110,6 @@ fn twitch_get_new(id: &String, pass: &String) {
             .as_bytes(),
           )
           .expect("Response was not send correctly");
-        connection.flush().unwrap();
 
         // Find 'code' part
         match buf.find("?code=") {

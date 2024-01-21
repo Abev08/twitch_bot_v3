@@ -8,3 +8,4 @@ Used dependencies:
 - sqlite - SQL database => a single file database is better than storing data in some file,
 - ureq - http requests => easy to use, low dependency count, doesn't force me to use tokio,
 - serde_json - json serialization and deserialization => easy to use, allows creating "dynamic" objects and accessing data with string keys like 'object["key"]',
+- tungstenite - WebSocket implementation,

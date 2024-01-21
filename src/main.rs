@@ -2,6 +2,7 @@ use std::{io::Write, thread, time::Duration};
 
 mod access_tokens;
 mod chat;
+mod client;
 mod database;
 mod secrets;
 
@@ -30,6 +31,8 @@ fn main() {
   access_tokens::update();
 
   chat::start();
+
+  client::start();
 
   // Main loop?
   let sleep_dur = Duration::from_millis(10);
