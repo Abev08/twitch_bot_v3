@@ -31,7 +31,7 @@ static FILE: &str = "secrets.ini";
 static DATA: Mutex<Vec<Record>> = Mutex::new(Vec::new());
 
 /// Parses secrets.ini file
-pub fn parse() {
+pub fn parse() -> bool {
   log::info!("Parsing secrets file");
   let mut data = DATA.lock().unwrap();
   data.push(Record::new(Keys::Channel));
@@ -45,8 +45,11 @@ pub fn parse() {
   let file = Path::new(FILE);
   if !file.exists() {
     create_file();
+    log::warn!("New secrets.ini file created. Fill it up and restart the bot");
+    return false;
   }
 
+  let mut required_info = [false, false, false, false];
   let file = File::open(file);
   if file.is_ok() {
     let f = BufReader::new(file.unwrap());
@@ -76,18 +79,39 @@ pub fn parse() {
 
       if key == format!("{:?}", Keys::Channel) {
         set_data(&mut data, Keys::Channel, &value.to_lowercase());
+        if value.len() > 0 {
+          required_info[0] = true;
+        }
       } else if key == format!("{:?}", Keys::TwitchName) {
         set_data(&mut data, Keys::TwitchName, value);
+        if value.len() > 0 {
+          required_info[1] = true;
+        }
       } else if key == format!("{:?}", Keys::TwitchID) {
         set_data(&mut data, Keys::TwitchID, value);
+        if value.len() > 0 {
+          required_info[2] = true;
+        }
       } else if key == format!("{:?}", Keys::TwitchPassowrd) {
         set_data(&mut data, Keys::TwitchPassowrd, value);
+        if value.len() > 0 {
+          required_info[3] = true;
+        }
       }
     }
   } else {
     log::error!("{}", file.unwrap_err());
-    return;
+    return false;
   }
+
+  // Check if all required info is provided
+  for req in required_info {
+    if !req {
+      log::warn!("Missing required information in secrets.ini file");
+      return false;
+    }
+  }
+  return true;
 }
 
 fn set_data(data: &mut Vec<Record>, key: Keys, value: &str) {

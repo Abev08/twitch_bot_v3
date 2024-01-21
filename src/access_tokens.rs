@@ -45,7 +45,10 @@ pub fn update() {
     twitch_get_new(&id, &pass);
   } else {
     // Update the access token
-    twitch_refresh(&id, &pass, &oauth_refresh);
+    if !twitch_refresh(&id, &pass, &oauth_refresh) {
+      // Update failed, request new one
+      twitch_get_new(&id, &pass);
+    }
   }
 }
 
@@ -164,14 +167,12 @@ fn twitch_refresh(id: &String, pass: &String, refresh_token: &String) -> bool {
       id,
       pass,
       refresh_token.replace(":", "%3A")
-    ))
-    .unwrap()
-    .into_string();
+    ));
 
   // Parse the response
   if response.is_ok() {
     log::info!("Acquired new Twitch access token");
-    let resp: serde_json::Value = serde_json::from_str(&response.unwrap()).unwrap();
+    let resp: serde_json::Value = serde_json::from_str(&response.unwrap().into_string().unwrap()).unwrap();
     let expiration = chrono::Local::now().add(chrono::Duration::seconds(
       resp["expires_in"].as_i64().unwrap(),
     ));
@@ -187,6 +188,6 @@ fn twitch_refresh(id: &String, pass: &String, refresh_token: &String) -> bool {
     return true;
   }
 
-  log::error!("Couldn't refresh Twitch access token");
+  log::error!("Couldn't refresh Twitch access token. {}", response.unwrap_err());
   return false;
 }

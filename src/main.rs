@@ -9,19 +9,14 @@ fn main() {
   // Logger setup
   env_logger::Builder::new()
     .format(|buf, record| {
-      let mut style = buf.style();
-      style.set_color(match record.level() {
-        log::Level::Trace => env_logger::fmt::Color::Cyan,
-        log::Level::Debug => env_logger::fmt::Color::Blue,
-        log::Level::Info => env_logger::fmt::Color::Green,
-        log::Level::Warn => env_logger::fmt::Color::Yellow,
-        log::Level::Error => env_logger::fmt::Color::Red,
-      });
+      let style = buf.default_level_style(record.level());
       return writeln!(
         buf,
-        "[{} {:<5}] {}",
+        "[{} {}{}{}] {}",
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-        style.value(record.level()),
+        style.render(),
+        record.level(),
+        style.render_reset(),
         record.args(),
       );
     })
@@ -29,9 +24,11 @@ fn main() {
     .init();
 
   database::init();
-  secrets::parse();
+  if !secrets::parse() {
+    return;
+  }
   access_tokens::update();
-  
+
   chat::start();
 
   // Main loop?
