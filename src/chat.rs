@@ -7,7 +7,7 @@ use std::{
   time::{Duration, SystemTime},
 };
 
-use crate::{database, secrets};
+use crate::{client, database, secrets};
 
 /// Message metadata
 struct Metadata {
@@ -19,6 +19,8 @@ struct Metadata {
   bits: String,
 }
 
+/// Should chat messages be printed to console window?
+const PRINT_CHAT_MESSAGES: bool = true;
 /// PING message response
 const PONG: &[u8] = b"PONG :tmi.twitch.tv\r\n";
 /// Queue for messages that should be send
@@ -154,7 +156,11 @@ fn update() {
                       metadata.username, metadata.bits, body
                     );
                   } else {
-                    println!("{:^3} {:>20}: {}", metadata.badge, metadata.username, body);
+                    if PRINT_CHAT_MESSAGES {
+                      println!("{:^3} {:>20}: {}", metadata.badge, metadata.username, body);
+                    }
+
+                    client::send_text_message(&format!("{}: {}", metadata.username, body));
 
                     // Check if the chatter used some commands
                     // if body == "get system time" {

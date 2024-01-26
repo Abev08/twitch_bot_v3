@@ -1,42 +1,36 @@
 use std::{
   io::{Read, Write},
-  net::TcpListener,
+  net::{SocketAddr, TcpListener},
+  sync::{Arc, Mutex, RwLock},
   thread,
   time::Duration,
 };
 
-use tungstenite::accept;
+use tungstenite::Message;
 
 const HTML_ADDRESS: &str = "127.0.0.1:40000";
 const WEBSOCKET_ADDRESS: &str = "127.0.0.1:40001";
 
-const INDEX_HTML: &str = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>AbevBot_v3</title><script src=\"client.js\"></script></head></html>";
-const CLIENT_JS: &str = "function loaded() {
-  // document.body.style.background = 'yellow';
+const INDEX_HTML: &str = include_str!("client/client.html");
+const CLIENT_JS: &str = include_str!("client/client.js");
 
-  const para = document.createElement('p');
-  para.appendChild(document.createTextNode('Test paragraph.'));
-  para.style.fontSize = '72px';
-  para.style.color = 'deepskyblue';
-  para.style.fontFamily = 'Calibri';
-  para.style.fontWeight = 'bolder';
-  para.style.webkitTextStroke = '1px black';
-  document.body.appendChild(para);
+struct Client {
+  addr: SocketAddr,
+  new_msg: bool,
+  msg: String,
 }
 
-const ws = new WebSocket('ws://localhost:40001');
+impl Client {
+  pub fn new(addr: SocketAddr) -> Self {
+    return Client {
+      addr,
+      new_msg: false,
+      msg: String::new(),
+    };
+  }
+}
 
-ws.addEventListener('open', () => {
-  console.log('WebSocket connection established!');
-
-  ws.send('Test message');
-})
-
-ws.addEventListener('message', e => {
-  console.log(e);
-});
-
-window.addEventListener('load', loaded);";
+static CONNECTED_CLIENTS: Mutex<Vec<Arc<RwLock<Client>>>> = Mutex::new(Vec::new());
 
 pub fn start() {
   // Create client thread
@@ -62,6 +56,8 @@ fn update_new_clients() {
   let mut request = String::new();
   let read_timeout = Some(Duration::from_millis(500));
 
+  log::info!("Client server started at: {}", HTML_ADDRESS);
+
   for stream in listener.incoming() {
     let mut connection = stream.unwrap();
     connection
@@ -75,9 +71,7 @@ fn update_new_clients() {
     request.clear();
     request.push_str(std::str::from_utf8(&request_buff[..n]).unwrap());
 
-    println!("New client connection");
-    // println!("New connection: {:?}, request: {:?}", connection, request);
-
+    // Return stuff based on request url
     if request.starts_with("GET / ") {
       connection
         .write_all(
@@ -88,7 +82,7 @@ fn update_new_clients() {
           )
           .as_bytes(),
         )
-        .expect("Couldn't sent client_index.html to the conneted client");
+        .expect("Couldn't sent client.html to the conneted client");
     } else if request.starts_with("GET /client.js ") {
       connection
         .write_all(
@@ -112,20 +106,61 @@ fn update_websockets() {
   log::info!("Client websocket start");
 
   let listener = TcpListener::bind(WEBSOCKET_ADDRESS).unwrap();
+  let read_timeout = Some(Duration::from_millis(10));
   for stream in listener.incoming() {
     thread::spawn(move || {
-      let mut websocket = accept(stream.unwrap()).unwrap();
-      println!("New websocket connection");
-      // println!("New websocket: {:?}", websocket);
+      let mut websocket = tungstenite::accept(stream.unwrap()).unwrap();
+      websocket
+        .get_mut()
+        .set_read_timeout(read_timeout)
+        .expect("Couldn't set read timeout for the websocket!");
+
+      let client = Arc::new(RwLock::new(Client::new(
+        websocket.get_ref().peer_addr().unwrap(),
+      )));
+      {
+        CONNECTED_CLIENTS.lock().unwrap().push(client.clone());
+      }
+
+      println!("New connection: {}", client.read().unwrap().addr);
 
       loop {
+        // Send messages
+        if client.read().unwrap().new_msg {
+          let mut c = client.write().unwrap();
+          c.new_msg = false;
+
+          let _ = websocket.send(Message::text(&c.msg));
+        }
+
+        // Read messages
         let res = websocket.read();
         if res.is_err() {
-          println!("Clocing websocket connection");
+          let err = res.unwrap_err();
+          if let tungstenite::Error::Io(_) = err {
+            continue;
+          } else {
+            println!(
+              "Websocket {} connection error: {}",
+              client.read().unwrap().addr,
+              err
+            );
+          }
+          // Delete dropped client from connected clients vec
+          {
+            let mut clients = CONNECTED_CLIENTS.lock().unwrap();
+            for i in 0..clients.len() {
+              if clients[i].read().unwrap().addr == client.read().unwrap().addr {
+                println!("Dropped connection: {}", client.read().unwrap().addr);
+                clients.remove(i);
+                break;
+              }
+            }
+          }
           return;
         }
         let msg = res.unwrap();
-        println!("Websocket message: {msg}");
+        println!("Message from {}, {}", client.read().unwrap().addr, msg);
 
         // We do not want to send back ping/pong messages.
         if msg.is_binary() || msg.is_text() {
@@ -133,5 +168,15 @@ fn update_websockets() {
         }
       }
     });
+  }
+}
+
+pub fn send_text_message(msg: &str) {
+  let clients = CONNECTED_CLIENTS.lock().unwrap();
+  for i in 0..clients.len() {
+    let mut c = clients[i].write().unwrap();
+    c.new_msg = true;
+    c.msg.clear();
+    c.msg.push_str(msg);
   }
 }

@@ -24,6 +24,8 @@ fn main() {
     .filter_level(log::LevelFilter::Info)
     .init();
 
+  log::info!("Hi! I'm AbevBot_v3");
+
   database::init();
   if !secrets::parse() {
     return;
