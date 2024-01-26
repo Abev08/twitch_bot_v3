@@ -1,4 +1,5 @@
 use std::{
+  collections::VecDeque,
   io::{Read, Write},
   net::{SocketAddr, TcpListener},
   sync::{Arc, Mutex, RwLock},
@@ -17,7 +18,7 @@ const CLIENT_JS: &str = include_str!("client/client.js");
 struct Client {
   addr: SocketAddr,
   new_msg: bool,
-  msg: String,
+  queue: VecDeque<Message>,
 }
 
 impl Client {
@@ -25,7 +26,7 @@ impl Client {
     return Client {
       addr,
       new_msg: false,
-      msg: String::new(),
+      queue: VecDeque::new(),
     };
   }
 }
@@ -128,9 +129,11 @@ fn update_websockets() {
         // Send messages
         if client.read().unwrap().new_msg {
           let mut c = client.write().unwrap();
-          c.new_msg = false;
-
-          let _ = websocket.send(Message::text(&c.msg));
+          let msg = c.queue.pop_front();
+          c.new_msg = c.queue.len() != 0;
+          if let Some(m) = msg {
+            let _ = websocket.send(m);
+          }
         }
 
         // Read messages
@@ -175,8 +178,7 @@ pub fn send_text_message(msg: &str) {
   let clients = CONNECTED_CLIENTS.lock().unwrap();
   for i in 0..clients.len() {
     let mut c = clients[i].write().unwrap();
+    c.queue.push_back(Message::Text(msg.to_owned()));
     c.new_msg = true;
-    c.msg.clear();
-    c.msg.push_str(msg);
   }
 }

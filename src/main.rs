@@ -4,6 +4,8 @@ mod access_tokens;
 mod chat;
 mod client;
 mod database;
+mod events;
+mod notifications;
 mod secrets;
 
 fn main() {
@@ -24,17 +26,21 @@ fn main() {
     .filter_level(log::LevelFilter::Info)
     .init();
 
-  log::info!("Hi! I'm AbevBot_v3");
+  log::info!("Hi! I'm AbevBot v3 :)");
 
   database::init();
-  if !secrets::parse() {
+  if secrets::parse().is_err() {
     return;
   }
-  access_tokens::update();
+  if access_tokens::update().is_err() {
+    return;
+  }
 
   chat::start();
+  events::start();
 
   client::start();
+  notifications::start();
 
   // Main loop?
   let sleep_dur = Duration::from_millis(10);

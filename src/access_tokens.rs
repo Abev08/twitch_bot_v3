@@ -23,7 +23,10 @@ static TWITCH_SCOPE: &[&str] = &[
   "whispers:read",              // View your whisper messages
 ];
 
-pub fn update() {
+/// Updates access tokens
+///
+/// Returns Err() if critical error occured, otherwise Ok()
+pub fn update() -> Result<(), ()> {
   log::info!("Updating access tokens");
   let mut id = String::new();
   let mut pass = String::new();
@@ -50,6 +53,12 @@ pub fn update() {
       twitch_get_new(&id, &pass);
     }
   }
+  // Get channel ID
+  if get_channel_id().is_err() {
+    return Err(());
+  }
+
+  return Ok(());
 }
 
 fn twitch_get_new(id: &String, pass: &String) {
@@ -171,7 +180,8 @@ fn twitch_refresh(id: &String, pass: &String, refresh_token: &String) -> bool {
   // Parse the response
   if response.is_ok() {
     log::info!("Acquired new Twitch access token");
-    let resp: serde_json::Value = serde_json::from_str(&response.unwrap().into_string().unwrap()).unwrap();
+    let resp: serde_json::Value =
+      serde_json::from_str(&response.unwrap().into_string().unwrap()).unwrap();
     let expiration = chrono::Local::now().add(chrono::Duration::seconds(
       resp["expires_in"].as_i64().unwrap(),
     ));
@@ -187,6 +197,39 @@ fn twitch_refresh(id: &String, pass: &String, refresh_token: &String) -> bool {
     return true;
   }
 
-  log::error!("Couldn't refresh Twitch access token. {}", response.unwrap_err());
+  log::error!(
+    "Couldn't refresh Twitch access token. {}",
+    response.unwrap_err()
+  );
   return false;
+}
+
+/// Updates channel id from provided channel name.
+fn get_channel_id() -> Result<(), ()> {
+  log::info!("Requesting channel ID");
+
+  let channel_name = &secrets::get_data(secrets::Keys::Channel);
+  let twitch_id = &secrets::get_data(secrets::Keys::TwitchID);
+  let twitch_oauth = &database::get_data(database::Keys::TwitchOAuth);
+  let response = ureq::get(&format!(
+    "https://api.twitch.tv/helix/users?login={}",
+    channel_name
+  ))
+  .set("Authorization", &format!("Bearer {}", &twitch_oauth))
+  .set("Client-Id", twitch_id)
+  .call();
+
+  if let Ok(resp) = response {
+    let data: serde_json::Value = serde_json::from_str(&resp.into_string().unwrap()).unwrap();
+    let data = data["data"].as_array().unwrap();
+    for i in 0..data.len() {
+      if data[i]["login"].as_str().unwrap() == channel_name {
+        secrets::set_data(secrets::Keys::ChannelID, data[i]["id"].as_str().unwrap());
+        return Ok(());
+      }
+    }
+  }
+
+  log::error!("Couldn't acquire broadcaster ID. Probably defined channel name doesn't exist.");
+  return Err(());
 }

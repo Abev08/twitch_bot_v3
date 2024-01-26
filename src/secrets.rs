@@ -22,6 +22,7 @@ impl Record {
 #[derive(Debug, PartialEq)]
 pub enum Keys {
   Channel,
+  ChannelID,
   TwitchName,
   TwitchID,
   TwitchPassowrd,
@@ -31,10 +32,11 @@ static FILE: &str = "secrets.ini";
 static DATA: Mutex<Vec<Record>> = Mutex::new(Vec::new());
 
 /// Parses secrets.ini file
-pub fn parse() -> bool {
+pub fn parse() -> Result<(),()> {
   log::info!("Parsing secrets file");
   let mut data = DATA.lock().unwrap();
   data.push(Record::new(Keys::Channel));
+  data.push(Record::new(Keys::ChannelID));
   data.push(Record::new(Keys::TwitchID));
   data.push(Record::new(Keys::TwitchName));
   data.push(Record::new(Keys::TwitchPassowrd));
@@ -46,10 +48,10 @@ pub fn parse() -> bool {
   if !file.exists() {
     create_file();
     log::warn!("New secrets.ini file created. Fill it up and restart the bot");
-    return false;
+    return Err(());
   }
 
-  let mut required_info = [false, false, false, false];
+  let mut required_info = RequiredInfo::new();
   let file = File::open(file);
   if file.is_ok() {
     let f = BufReader::new(file.unwrap());
@@ -78,43 +80,49 @@ pub fn parse() -> bool {
       value = value.trim();
 
       if key == format!("{:?}", Keys::Channel) {
-        set_data(&mut data, Keys::Channel, &value.to_lowercase());
-        if value.len() > 0 {
-          required_info[0] = true;
-        }
+        let temp = &value.to_lowercase();
+        _set_data(&mut data, Keys::Channel, temp);
+        required_info.channel.clear();
+        required_info.channel.push_str(temp);
       } else if key == format!("{:?}", Keys::TwitchName) {
-        set_data(&mut data, Keys::TwitchName, value);
-        if value.len() > 0 {
-          required_info[1] = true;
-        }
+        _set_data(&mut data, Keys::TwitchName, value);
+        required_info.twitch_name.clear();
+        required_info.twitch_name.push_str(value);
       } else if key == format!("{:?}", Keys::TwitchID) {
-        set_data(&mut data, Keys::TwitchID, value);
-        if value.len() > 0 {
-          required_info[2] = true;
-        }
+        _set_data(&mut data, Keys::TwitchID, value);
+        required_info.twitch_id.clear();
+        required_info.twitch_id.push_str(value);
       } else if key == format!("{:?}", Keys::TwitchPassowrd) {
-        set_data(&mut data, Keys::TwitchPassowrd, value);
-        if value.len() > 0 {
-          required_info[3] = true;
-        }
+        _set_data(&mut data, Keys::TwitchPassowrd, value);
+        required_info.twitch_pass.clear();
+        required_info.twitch_pass.push_str(value);
       }
     }
   } else {
     log::error!("{}", file.unwrap_err());
-    return false;
+    return Err(());
   }
 
   // Check if all required info is provided
-  for req in required_info {
-    if !req {
-      log::warn!("Missing required information in secrets.ini file");
-      return false;
-    }
+  if !required_info.filled_up() {
+    log::warn!("Missing required information in secrets.ini file");
+    return Err(());
   }
-  return true;
+  return Ok(());
 }
 
-fn set_data(data: &mut Vec<Record>, key: Keys, value: &str) {
+fn _set_data(data: &mut Vec<Record>, key: Keys, value: &str) {
+  for i in 0..data.len() {
+    if data[i].key == key {
+      data[i].value.clear();
+      data[i].value.push_str(value);
+      return;
+    }
+  }
+}
+
+pub fn set_data(key: Keys, value: &str) {
+  let mut data = DATA.lock().unwrap();
   for i in 0..data.len() {
     if data[i].key == key {
       data[i].value.clear();
@@ -130,6 +138,7 @@ pub fn get_data(key: Keys) -> String {
   for i in 0..data.len() {
     if data[i].key == key {
       ret.push_str(&data[i].value);
+      break;
     }
   }
   return ret;
@@ -150,5 +159,30 @@ fn create_file() {
       .unwrap()
       .write(content.as_bytes())
       .expect("Something went wrong when writing to the file");
+  }
+}
+
+struct RequiredInfo {
+  channel: String,
+  twitch_name: String,
+  twitch_id: String,
+  twitch_pass: String,
+}
+
+impl RequiredInfo {
+  fn new() -> Self {
+    Self {
+      channel: String::new(),
+      twitch_name: String::new(),
+      twitch_id: String::new(),
+      twitch_pass: String::new(),
+    }
+  }
+
+  fn filled_up(&self) -> bool {
+    return self.channel.len() > 0
+      && self.twitch_name.len() > 0
+      && self.twitch_id.len() > 0
+      && self.twitch_pass.len() > 0;
   }
 }
