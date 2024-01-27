@@ -99,7 +99,7 @@ pub fn add_follow_notification(user_name: &str) {
   let notification = Notification {
     thetype: NotificationType::FOLLOW,
     message_displayed: Some(format!("New follower {}!", user_name)),
-    message_displayed_position: (100, 100),
+    message_displayed_position: (100, 200),
     played_sound: Some("follow_sound".to_owned()),
     ..Default::default()
   };
