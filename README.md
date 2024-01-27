@@ -9,3 +9,4 @@ Used dependencies:
 - ureq - http requests => easy to use, low dependency count, doesn't force me to use tokio,
 - serde_json - json serialization and deserialization => easy to use, allows creating "dynamic" objects and accessing data with string keys like 'object["key"]',
 - tungstenite - WebSocket implementation,
+- tiny_http - HTTP server that just works and doesn't require Tokio,

@@ -1,13 +1,15 @@
 use std::{
   collections::VecDeque,
-  io::{Read, Write},
   net::{SocketAddr, TcpListener},
   sync::{Arc, Mutex, RwLock},
   thread,
   time::Duration,
 };
 
+use tiny_http::{Header, Response, Server, StatusCode};
 use tungstenite::Message;
+
+use crate::notifications;
 
 const HTML_ADDRESS: &str = "127.0.0.1:40000";
 const WEBSOCKET_ADDRESS: &str = "127.0.0.1:40001";
@@ -19,6 +21,7 @@ struct Client {
   addr: SocketAddr,
   new_msg: bool,
   queue: VecDeque<Message>,
+  finished: bool,
 }
 
 impl Client {
@@ -27,6 +30,7 @@ impl Client {
       addr,
       new_msg: false,
       queue: VecDeque::new(),
+      finished: true,
     };
   }
 }
@@ -52,53 +56,38 @@ pub fn start() {
 fn update_new_clients() {
   log::info!("Client server start");
 
-  let listener = TcpListener::bind(HTML_ADDRESS).unwrap();
-  let mut request_buff = [0; 1024];
-  let mut request = String::new();
-  let read_timeout = Some(Duration::from_millis(500));
+  let server = Server::http(HTML_ADDRESS).unwrap();
+  log::info!("Client server started at: http://{}", HTML_ADDRESS);
 
-  log::info!("Client server started at: {}", HTML_ADDRESS);
-
-  for stream in listener.incoming() {
-    let mut connection = stream.unwrap();
-    connection
-      .set_read_timeout(read_timeout)
-      .expect("Couldn't set read timeout");
-    let res = connection.read(&mut request_buff);
-    if res.is_err() {
-      continue;
-    }
-    let n = res.unwrap();
-    request.clear();
-    request.push_str(std::str::from_utf8(&request_buff[..n]).unwrap());
-
-    // Return stuff based on request url
-    if request.starts_with("GET / ") {
-      connection
-        .write_all(
-          format!(
-            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
-            INDEX_HTML.len(),
-            INDEX_HTML
-          )
-          .as_bytes(),
-        )
-        .expect("Couldn't sent client.html to the conneted client");
-    } else if request.starts_with("GET /client.js ") {
-      connection
-        .write_all(
-          format!(
-            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
-            CLIENT_JS.len(),
-            CLIENT_JS
-          )
-          .as_bytes(),
-        )
-        .expect("Couldn't sent client.js to the conneted client");
-    } else {
-      connection
-        .write_all(b"HTTP/1.1 204 No Content")
-        .expect("Couldn't sent error code to the conneted client");
+  for request in server.incoming_requests() {
+    match request.url() {
+      "/" => {
+        let resp = Response::from_string(INDEX_HTML).with_header(Header {
+          field: "Content-Type".parse().unwrap(),
+          value: "text/html; charset=UTF-8".parse().unwrap(),
+        });
+        request
+          .respond(resp)
+          .expect("Couldn't respond to the request");
+      }
+      "/client.js" => {
+        let resp = Response::from_string(CLIENT_JS);
+        request
+          .respond(resp)
+          .expect("Couldn't respond to the request");
+      }
+      "/follow_sound" => {
+        let resp = Response::from_data(notifications::DEFAULT_NOTIFICATION_SOUND);
+        request
+          .respond(resp)
+          .expect("Couldn't respond to the request");
+      }
+      _ => {
+        let response = Response::new_empty(StatusCode(204));
+        request
+          .respond(response)
+          .expect("Couldn't respond to the request");
+      }
     }
   }
 }
@@ -156,6 +145,7 @@ fn update_websockets() {
               if clients[i].read().unwrap().addr == client.read().unwrap().addr {
                 println!("Dropped connection: {}", client.read().unwrap().addr);
                 clients.remove(i);
+                check_clients_finished(Some(clients));
                 break;
               }
             }
@@ -165,9 +155,13 @@ fn update_websockets() {
         let msg = res.unwrap();
         println!("Message from {}, {}", client.read().unwrap().addr, msg);
 
-        // We do not want to send back ping/pong messages.
-        if msg.is_binary() || msg.is_text() {
-          websocket.send(msg).unwrap();
+        if msg.is_text() {
+          let text = msg.to_text().unwrap();
+          if text == "FINISHED" {
+            // Notification finished client event
+            client.write().unwrap().finished = true;
+            check_clients_finished(None);
+          }
         }
       }
     });
@@ -179,6 +173,26 @@ pub fn send_text_message(msg: &str) {
   for i in 0..clients.len() {
     let mut c = clients[i].write().unwrap();
     c.queue.push_back(Message::Text(msg.to_owned()));
+    c.finished = false;
     c.new_msg = true;
   }
+}
+
+fn check_clients_finished(clients: Option<std::sync::MutexGuard<'_, Vec<Arc<RwLock<Client>>>>>) {
+  let _clients: std::sync::MutexGuard<'_, Vec<Arc<RwLock<Client>>>>;
+  if clients.is_some() {
+    _clients = clients.unwrap();
+  } else {
+    _clients = CONNECTED_CLIENTS.lock().unwrap();
+  }
+
+  for i in 0.._clients.len() {
+    if _clients[i].read().unwrap().finished == false {
+      // Early return if one of the clients didn't finish notificaiton
+      return;
+    }
+  }
+
+  // All of the clients finished their notifications
+  notifications::NOTIFICATION_FINISHED.lock().unwrap()[0] = true;
 }

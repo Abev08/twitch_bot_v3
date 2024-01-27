@@ -2,7 +2,7 @@ use serde_json::json;
 use std::{thread, time::Duration};
 use tungstenite::{client::IntoClientRequest, Message};
 
-use crate::{database, secrets};
+use crate::{database, notifications, secrets};
 
 const WEBSOCKETURL: &str = "wss://eventsub.wss.twitch.tv/ws";
 const SUBSCRIPTIONURL: &str = "https://api.twitch.tv/helix/eventsub/subscriptions";
@@ -92,6 +92,7 @@ fn update() {
                 if msg["payload"]["subscription"]["type"] == "channel.follow" {
                   // Channel follow
                   println!(">> New follow from {}.", user_name);
+                  notifications::add_follow_notification(user_name);
                 } else {
                   // Unrecognized notification
                   println!("{}", msg);
@@ -100,6 +101,10 @@ fn update() {
                 // Unrecognized message
                 println!("{}", msg);
               }
+            }
+            Message::Close(e) => {
+              log::warn!("Events bot websocket communication error: {:?}", e);
+              break;
             }
             _ => {
               println!("{:?}", message);
