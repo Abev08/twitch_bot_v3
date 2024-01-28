@@ -4,3 +4,5 @@ Cargo.lock
 resources/
 .db
 secrets.ini
+
+twitch-cli*/

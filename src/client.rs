@@ -168,14 +168,19 @@ fn update_websockets() {
   }
 }
 
-pub fn send_text_message(msg: &str) {
+pub fn send_text_message(msg: &str) -> bool {
   let clients = CONNECTED_CLIENTS.lock().unwrap();
+  if clients.len() == 0 {
+    return false;
+  }
+
   for i in 0..clients.len() {
     let mut c = clients[i].write().unwrap();
     c.queue.push_back(Message::Text(msg.to_owned()));
     c.finished = false;
     c.new_msg = true;
   }
+  return true;
 }
 
 fn check_clients_finished(clients: Option<std::sync::MutexGuard<'_, Vec<Arc<RwLock<Client>>>>>) {

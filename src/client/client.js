@@ -1,8 +1,12 @@
 const ws = new WebSocket("ws://localhost:40001");
+let conn_err;
+let content;
+let audio_player;
 
 function loaded() {
-  const conn_err = document.getElementById("conn_err");
-  const content = document.getElementById("content");
+  conn_err = document.getElementById("conn_err");
+  content = document.getElementById("content");
+  audio_player = new Audio();
 
   document.head.innerHTML += `
     <style>
@@ -47,9 +51,10 @@ ws.addEventListener("message", e => {
 
   // Play audio
   if (data.played_sound.length > 0) {
-    const audio = new Audio(data.played_sound);
-    audio.volume = 0.1;
-    audio.play();
+    audio_player.pause();
+    audio_player.src = data.played_sound;
+    audio_player.volume = data.played_sound_volume;
+    audio_player.play();
   }
 
   // Finished event creation

@@ -2,7 +2,7 @@ use std::{collections::VecDeque, sync::Mutex, thread, time::Duration};
 
 use serde_json::json;
 
-use crate::client;
+use crate::{chat, client};
 
 enum NotificationType {
   NONE,
@@ -22,8 +22,10 @@ struct Notification {
   message_displayed: Option<String>,
   message_displayed_position: (i32, i32),
   message_read: Option<String>, // TTS
-  played_sound: Option<String>, // byte array of sound to play
-  played_video: Option<String>, // byte array of video to play
+  played_sound: Option<String>, // name of the sound that server would be asked to provide
+  played_sound_volume: f32,
+  played_video: Option<String>, // name of the video that server would be asked to provide
+  played_video_volume: f32,
 }
 
 impl Default for Notification {
@@ -35,20 +37,30 @@ impl Default for Notification {
       message_displayed_position: (0, 0),
       message_read: None,
       played_sound: None,
+      played_sound_volume: 1.0,
       played_video: None,
+      played_video_volume: 1.0,
     }
   }
 }
 
 impl Notification {
-  fn start(&self) {
-    // FIXME:
-    client::send_text_message(
+  fn start(&self) -> bool {
+    if self.message_chat.is_some() {
+      let msg = self.message_chat.clone().unwrap();
+      chat::send_message(&msg);
+    }
+
+    // FIXME: missing data to be sent to the client
+    return client::send_text_message(
       &json!({
         "type": 1,
         "message_displayed": self.message_displayed,
         "message_displayed_position": self.message_displayed_position,
-        "played_sound": self.played_sound
+        "played_sound": self.played_sound,
+        "played_sound_volume": self.played_sound_volume,
+        "played_video": self.played_video,
+        "played_video_volume": self.played_video_volume,
       })
       .to_string(),
     )
@@ -80,9 +92,11 @@ fn update() {
 
       if queue.len() > 0 {
         current_notificaiton = queue.pop_front().unwrap();
-        current_notificaiton.start();
-        started = true;
-        NOTIFICATION_FINISHED.lock().unwrap()[0] = false;
+        if current_notificaiton.start() {
+          // .start() returned true - there are some clients playing notificaiton
+          started = true;
+          NOTIFICATION_FINISHED.lock().unwrap()[0] = false;
+        }
       }
     } else {
       if NOTIFICATION_FINISHED.lock().unwrap()[0] {
@@ -98,9 +112,11 @@ pub fn add_follow_notification(user_name: &str) {
   let mut queue = QUEUE.lock().unwrap();
   let notification = Notification {
     thetype: NotificationType::FOLLOW,
+    message_chat: Some(format!("@{} thank you for following!", user_name)),
     message_displayed: Some(format!("New follower {}!", user_name)),
     message_displayed_position: (100, 200),
     played_sound: Some("follow_sound".to_owned()),
+    played_sound_volume: 0.2,
     ..Default::default()
   };
   queue.push_back(notification);
