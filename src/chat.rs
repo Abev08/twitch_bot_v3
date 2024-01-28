@@ -48,7 +48,7 @@ pub fn start() {
 
   // Create chat bot thread
   thread::Builder::new()
-    .name("Chat bot".to_string())
+    .name("Chat".to_string())
     .spawn(move || {
       update();
     })
@@ -246,7 +246,7 @@ fn update() {
                       }
                       println!("> {} got banned!", &msg[temp..]);
                     } else {
-                      println!("> chat got cleared");
+                      println!("> Chat got cleared");
                     }
                   }
                   "CLEARMSG" => {
@@ -270,14 +270,32 @@ fn update() {
                       "emote_only_off" => {
                         println!("> This room is no longer in emote-only mode.");
                       }
-                      "followers_on_zero" => {
+                      "subs_on" => {
+                        println!("> This room is now in subscribers-only mode.");
+                      }
+                      "subs_off" => {
+                        println!("> This room is no longer in subscribers-only mode.");
+                      }
+                      "followers_on" | "followers_on_zero" => {
                         println!("> This room is now in followers-only mode.");
+                      }
+                      "followers_off" => {
+                        println!("> This room is no longer in followers-only mode.");
+                      }
+                      "slow_on" => {
+                        println!("> This room is now in slow mode.");
+                      }
+                      "slow_off" => {
+                        println!("> This room is no longer in slow mode.");
                       }
                       _ => {
                         // Message type not recognized - print the whole message
                         println!("{}", msg);
                       }
                     }
+                  }
+                  "ROOMSTATE" => {
+                    // Room state changed - do nothing? This message is always send with another one?
                   }
                   "USERSTATE" => {
                     if PRINT_CHAT_MESSAGES {
@@ -356,8 +374,19 @@ fn parse_message<'a>(msg: &'a str, metadata: &mut Metadata) -> (&'a str, &'a str
   index = header.find("id=");
   if index.is_some() {
     temp = index.unwrap() + 3; // 3 == "id=".len()
-    temp2 = header[temp..].find(';').unwrap();
-    metadata.message_id.push_str(&header[temp..(temp + temp2)]);
+    index = header[temp..].find(';');
+    if index.is_some() {
+      metadata
+        .message_id
+        .push_str(&header[temp..(temp + index.unwrap())]);
+    } else {
+      index = header[temp..].find(' ');
+      if index.is_some() {
+        metadata
+          .message_id
+          .push_str(&header[temp..(temp + index.unwrap())]);
+      }
+    }
   }
 
   // Get the badge
