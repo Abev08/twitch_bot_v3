@@ -63,7 +63,7 @@ impl Notification {
         "played_video_volume": self.played_video_volume,
       })
       .to_string(),
-    )
+    );
   }
 }
 
@@ -117,6 +117,69 @@ pub fn add_follow_notification(user_name: &str) {
     message_displayed_position: (100, 200),
     played_sound: Some("follow_sound".to_owned()),
     played_sound_volume: 0.2,
+    ..Default::default()
+  };
+  queue.push_back(notification);
+}
+
+pub fn add_subscription_notification() {
+  let mut queue = QUEUE.lock().unwrap();
+  let notification = Notification {
+    thetype: NotificationType::SUBSCRIPTION,
+    ..Default::default()
+  };
+  queue.push_back(notification);
+}
+
+pub fn add_subscription_ext_notification() {
+  let mut queue = QUEUE.lock().unwrap();
+  let notification = Notification {
+    thetype: NotificationType::SUBSCRIPTIONEXT,
+    ..Default::default()
+  };
+  queue.push_back(notification);
+}
+
+pub fn add_subscription_gift_notification() {
+  let mut queue = QUEUE.lock().unwrap();
+  let notification = Notification {
+    thetype: NotificationType::SUBSCRIPTIONGIFT,
+    ..Default::default()
+  };
+  queue.push_back(notification);
+}
+
+pub fn add_subscription_gift_received_notification() {
+  let mut queue = QUEUE.lock().unwrap();
+  let notification = Notification {
+    thetype: NotificationType::SUBSCRIPTIONGIFTRECEIVED,
+    ..Default::default()
+  };
+  queue.push_back(notification);
+}
+
+pub fn add_bits_notification() {
+  let mut queue = QUEUE.lock().unwrap();
+  let notification = Notification {
+    thetype: NotificationType::BITS,
+    ..Default::default()
+  };
+  queue.push_back(notification);
+}
+
+pub fn add_raid_notification() {
+  let mut queue = QUEUE.lock().unwrap();
+  let notification = Notification {
+    thetype: NotificationType::RAID,
+    ..Default::default()
+  };
+  queue.push_back(notification);
+}
+
+pub fn add_channel_redemption_notification() {
+  let mut queue = QUEUE.lock().unwrap();
+  let notification = Notification {
+    thetype: NotificationType::CHANNELREDEMPTION,
     ..Default::default()
   };
   queue.push_back(notification);

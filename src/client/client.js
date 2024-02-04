@@ -1,4 +1,4 @@
-const ws = new WebSocket("ws://localhost:40001");
+const ws = new WebSocket("ws://" + window.location.hostname + ":40001");
 let conn_err;
 let content;
 let audio_player;
@@ -37,17 +37,19 @@ ws.addEventListener("close", () => {
 
 ws.addEventListener("message", e => {
   let data = JSON.parse(e.data);
-  console.log(data);
+  // console.log(data);
 
   // Clear previous child nodes
   clear_content();
 
   // Create elements
-  let text = document.createElement("h1");
-  text.appendChild(document.createTextNode(data.message_displayed));
-  text.style.left = data.message_displayed_position[0] + "px";
-  text.style.top = data.message_displayed_position[1] + "px";
-  content.appendChild(text);
+  if (data.message_displayed.length > 0) {
+    let text = document.createElement("h1");
+    text.appendChild(document.createTextNode(data.message_displayed));
+    text.style.left = data.message_displayed_position[0] + "px";
+    text.style.top = data.message_displayed_position[1] + "px";
+    content.appendChild(text);
+  }
 
   // Play audio
   if (data.played_sound.length > 0) {
@@ -59,7 +61,7 @@ ws.addEventListener("message", e => {
 
   // Finished event creation
   if (data.type == 1) {
-    // Follow notification
+    // Follow notification - standard 2 s duration
     window.setTimeout(finished, 2000);
   }
 });

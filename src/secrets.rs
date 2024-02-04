@@ -1,7 +1,9 @@
 use std::{
   fs::File,
   io::{BufRead, BufReader, Write},
+  net::IpAddr,
   path::Path,
+  str::FromStr,
   sync::Mutex,
 };
 
@@ -26,13 +28,14 @@ pub enum Keys {
   TwitchName,
   TwitchID,
   TwitchPassowrd,
+  ServerIP,
 }
 
 static FILE: &str = "secrets.ini";
 static DATA: Mutex<Vec<Record>> = Mutex::new(Vec::new());
 
 /// Parses secrets.ini file
-pub fn parse() -> Result<(),()> {
+pub fn parse() -> Result<(), ()> {
   log::info!("Parsing secrets file");
   let mut data = DATA.lock().unwrap();
   data.push(Record::new(Keys::Channel));
@@ -40,6 +43,7 @@ pub fn parse() -> Result<(),()> {
   data.push(Record::new(Keys::TwitchID));
   data.push(Record::new(Keys::TwitchName));
   data.push(Record::new(Keys::TwitchPassowrd));
+  data.push(Record::new(Keys::ServerIP));
 
   let (mut key, mut value): (&str, &str);
   let mut index: usize;
@@ -96,6 +100,14 @@ pub fn parse() -> Result<(),()> {
         _set_data(&mut data, Keys::TwitchPassowrd, value);
         required_info.twitch_pass.clear();
         required_info.twitch_pass.push_str(value);
+      } else if key == format!("{:?}", Keys::ServerIP) {
+        if IpAddr::from_str(value).is_ok() {
+          _set_data(&mut data, Keys::ServerIP, value);
+          required_info.server_ip.clear();
+          required_info.server_ip.push_str(value);
+        }
+      } else {
+        log::warn!("Key '{}' not recognized in secrets.ini", key);
       }
     }
   } else {
@@ -105,7 +117,10 @@ pub fn parse() -> Result<(),()> {
 
   // Check if all required info is provided
   if !required_info.filled_up() {
-    log::warn!("Missing required information in secrets.ini file");
+    log::error!(
+      "Missing required information in secrets.ini file. Missing: {}",
+      required_info.get_missing_data_error()
+    );
     return Err(());
   }
   return Ok(());
@@ -154,6 +169,8 @@ fn create_file() {
     content.push_str(&format!("{:?} = \n", Keys::TwitchName));
     content.push_str(&format!("{:?} = \n", Keys::TwitchID));
     content.push_str(&format!("{:?} = \n", Keys::TwitchPassowrd));
+    content.push_str("\n");
+    content.push_str(&format!("{:?} = 127.0.0.1\n", Keys::ServerIP));
 
     new_file
       .unwrap()
@@ -167,22 +184,54 @@ struct RequiredInfo {
   twitch_name: String,
   twitch_id: String,
   twitch_pass: String,
+  server_ip: String,
 }
 
 impl RequiredInfo {
   fn new() -> Self {
-    Self {
+    return Self {
       channel: String::new(),
       twitch_name: String::new(),
       twitch_id: String::new(),
       twitch_pass: String::new(),
-    }
+      server_ip: String::new(),
+    };
   }
 
   fn filled_up(&self) -> bool {
     return self.channel.len() > 0
       && self.twitch_name.len() > 0
       && self.twitch_id.len() > 0
-      && self.twitch_pass.len() > 0;
+      && self.twitch_pass.len() > 0
+      && self.server_ip.len() > 0;
+  }
+
+  fn get_missing_data_error(&self) -> String {
+    let mut err = String::new();
+
+    if self.channel.len() == 0 {
+      RequiredInfo::append_missing_data_error(&mut err, "Channel");
+    }
+    if self.twitch_name.len() == 0 {
+      RequiredInfo::append_missing_data_error(&mut err, "TwitchName");
+    }
+    if self.twitch_id.len() == 0 {
+      RequiredInfo::append_missing_data_error(&mut err, "TwitchID");
+    }
+    if self.twitch_pass.len() == 0 {
+      RequiredInfo::append_missing_data_error(&mut err, "TwitchPassword");
+    }
+    if self.server_ip.len() == 0 {
+      RequiredInfo::append_missing_data_error(&mut err, "ServerIP");
+    }
+
+    return err;
+  }
+
+  fn append_missing_data_error(msg: &mut String, text: &str) {
+    if msg.len() > 0 {
+      msg.push_str(", ");
+    }
+    msg.push_str(text);
   }
 }

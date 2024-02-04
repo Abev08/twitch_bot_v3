@@ -40,6 +40,7 @@ const PRINT_CHAT_MESSAGES: bool = false;
 const PONG: &[u8] = b"PONG :tmi.twitch.tv\r\n";
 /// Queue for messages that should be send
 static SENDQUEUE: Mutex<VecDeque<String>> = Mutex::new(VecDeque::new());
+/// Minimum time between sending messages
 const SEND_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Starts the chat bot
@@ -176,8 +177,11 @@ fn update() {
                   }
                   "USERNOTICE" => {
                     match metadata.msg_id.as_str() {
-                      "sub" | "resub" => {
+                      "sub" => {
                         println!("> {} subscribed! {}", metadata.username, body);
+                      }
+                      "resub" => {
+                        println!("> {} resubscribed! {}", metadata.username, body);
                       }
                       "subgift" => {
                         let mut receipent = "";
@@ -245,6 +249,8 @@ fn update() {
                         temp = msg.len();
                       }
                       println!("> {} got banned!", &msg[temp..]);
+                    } else if body.len() > 0 {
+                      println!("> {} chat messages got cleared", &body);
                     } else {
                       println!("> Chat got cleared");
                     }
@@ -322,16 +328,26 @@ fn update() {
         }
 
         // Send
-        if last_send_time.elapsed().unwrap() >= SEND_TIMEOUT {
-          last_send_time = SystemTime::now();
+        match last_send_time.elapsed() {
+          Ok(elapsed) => {
+            if elapsed >= SEND_TIMEOUT {
+              last_send_time = SystemTime::now();
 
-          let mut queue = SENDQUEUE.lock().unwrap();
-          if queue.len() > 0 {
-            let msg = queue.pop_front().unwrap();
-            stream
-              .write(msg.as_bytes())
-              .expect("Something went wrong when sending the message");
-            drop(msg);
+              let mut queue = SENDQUEUE.lock().unwrap();
+              if queue.len() > 0 {
+                let msg = queue.pop_front().unwrap();
+                stream
+                  .write(msg.as_bytes())
+                  .expect("Something went wrong when sending the message");
+                drop(msg);
+              }
+            }
+          }
+          Err(err) => {
+            log::error!(
+              "Error when calculating elapsed time since last message: {}",
+              err
+            );
           }
         }
       }
@@ -339,123 +355,76 @@ fn update() {
   }
 }
 
+/// Parses provided `msg` returning `header` and `body` part of it and updating it's `metadata`
 fn parse_message<'a>(msg: &'a str, metadata: &mut Metadata) -> (&'a str, &'a str) {
   metadata.clear();
 
   let (mut temp, mut temp2): (usize, usize);
   let (header, body): (&str, &str);
-  let mut index = msg.find("tmi.twitch.tv");
-  if index.is_none() {
-    log::warn!("Chat message not parsed correctly\n{}", msg);
-    return (&"", &"");
+
+  // Find header <-> body "separator"
+  match msg.find("tmi.twitch.tv") {
+    Some(index) => temp = index,
+    None => {
+      log::warn!("Chat message not parsed correctly\n{}", msg);
+      return ("", "");
+    }
   }
 
   // Get message header
-  temp = index.unwrap();
   header = &msg[..temp];
   temp += 14; // 14 == "tmi.twitch.tv ".len()
 
   // Get message type
-  temp2 = msg[temp..].find(' ').unwrap();
+  temp2 = match msg[temp..].find(' ') {
+    Some(index) => index,
+    None => msg.len() - temp, // Reconnect message - ":tmi.twitch.tv RECONNECT", maybe something more?
+  };
   metadata.message_type.push_str(&msg[temp..(temp + temp2)]);
   temp2 += 1 + temp;
 
   // Get message body
-  index = msg[temp2..].find(':');
-  if index.is_none() {
-    // No message body found
-    body = "";
-  } else {
-    temp = index.unwrap() + 1;
-    body = &msg[(temp + temp2)..];
-  }
+  body = match msg[temp2..].find(':') {
+    Some(index) => &msg[(index + 1 + temp2)..],
+    None => "", // No message body found
+  };
 
-  // Get the message ID
-  index = header.find("id=");
-  if index.is_some() {
-    temp = index.unwrap() + 3; // 3 == "id=".len()
-    index = header[temp..].find(';');
-    if index.is_some() {
-      metadata
-        .message_id
-        .push_str(&header[temp..(temp + index.unwrap())]);
-    } else {
-      index = header[temp..].find(' ');
-      if index.is_some() {
-        metadata
-          .message_id
-          .push_str(&header[temp..(temp + index.unwrap())]);
+  // Get header data
+  let header_data: Vec<&str> = header.split(&[';', ' '][..]).collect();
+  for data in header_data {
+    if data.starts_with("id=") {
+      // Message ID
+      metadata.message_id.push_str(&data[3..]); // 3 == "id=".len()
+    } else if data.starts_with("badges=") {
+      // Badge
+      let badge = &data[7..]; // 7 == "badges=".len()
+      if badge.starts_with("broadcaster") {
+        metadata.badge.push_str("STR");
+      } else if badge.starts_with("moderator") {
+        metadata.badge.push_str("MOD");
+      } else if badge.starts_with("subscriber") {
+        metadata.badge.push_str("SUB");
+      } else if badge.starts_with("vip") {
+        metadata.badge.push_str("VIP");
       }
-    }
-  }
-
-  // Get the badge
-  index = header.find("badges=");
-  if index.is_some() {
-    temp = index.unwrap() + 7; // 7 == "badges=".len()
-    temp2 = header[temp..].find(';').unwrap();
-    let badge = &header[temp..(temp + temp2)];
-    if badge.starts_with("broadcaster") {
-      metadata.badge.push_str("STR");
-    } else if badge.starts_with("moderator") {
-      metadata.badge.push_str("MOD");
-    } else if badge.starts_with("subscriber") {
-      metadata.badge.push_str("SUB");
-    } else if badge.starts_with("vip") {
-      metadata.badge.push_str("VIP");
-    }
-  }
-
-  // Get the name
-  index = header.find("display-name=");
-  if index.is_some() {
-    temp = index.unwrap() + 13; // 13 == "display-name=".len()
-    temp2 = header[temp..].find(';').unwrap();
-    metadata.username.push_str(&header[temp..(temp + temp2)]);
-  }
-
-  // Get user ID
-  index = header.find("user-id=");
-  if index.is_some() {
-    temp = index.unwrap() + 8; // 8 == "user-id=".len()
-    temp2 = header[temp..].find(';').unwrap();
-    metadata.user_id.push_str(&header[temp..(temp + temp2)]);
-  }
-
-  // Get custom reward ID
-  index = header.find("custom-reward-id=");
-  if index.is_some() {
-    temp = index.unwrap() + 17; // 17 == "custom-reward-id=".len()
-    temp2 = header[temp..].find(';').unwrap();
-    metadata
-      .custrom_reward_id
-      .push_str(&header[temp..(temp + temp2)]);
-  }
-
-  // Get bits amount
-  index = header.find("bits=");
-  if index.is_some() {
-    temp = index.unwrap() + 5; // 5 == "bits=".len()
-    temp2 = header[temp..].find(';').unwrap();
-    metadata.bits.push_str(&header[temp..(temp + temp2)]);
-  }
-
-  // Get message ID
-  index = header.find("msg-id=");
-  if index.is_some() {
-    temp = index.unwrap() + 7; // 7 == "msg-id=".len()
-    index = msg[temp..].find(';');
-    if index.is_some() {
-      metadata
-        .msg_id
-        .push_str(&msg[temp..(index.unwrap() + temp)]);
-    } else {
-      index = msg[temp..].find(' ');
-      if index.is_some() {
-        metadata
-          .msg_id
-          .push_str(&msg[temp..(index.unwrap() + temp)]);
-      }
+    } else if data.starts_with("display-name=") {
+      // Chatter name
+      metadata.username.push_str(&data[13..]); // 13 == "display-name=".len()
+    } else if data.starts_with("user-id=") {
+      // Chatter user ID
+      metadata.user_id.push_str(&data[8..]); // 8 == "user-id=".len()
+    } else if data.starts_with("custom-reward-id=") {
+      // Custom reward ID
+      metadata.custrom_reward_id.push_str(&data[17..]); // 17 == "custom-reward-id=".len()
+    } else if data.starts_with("bits=") {
+      // Bits
+      metadata.bits.push_str(&data[5..]); // 5 == "bits=".len()
+    } else if data.starts_with("@msg-id=") {
+      // msg_id - special message type, being it's own message
+      metadata.msg_id.push_str(&data[8..]); // 8 == "@msg-id=".len()
+    } else if data.starts_with("msg-id=") {
+      // msg_id - special message type, attached to normal message
+      metadata.msg_id.push_str(&data[7..]); // 7 == "msg-id=".len()
     }
   }
 

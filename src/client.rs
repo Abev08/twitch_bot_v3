@@ -9,10 +9,7 @@ use std::{
 use tiny_http::{Header, Response, Server, StatusCode};
 use tungstenite::Message;
 
-use crate::notifications;
-
-const HTML_ADDRESS: &str = "127.0.0.1:40000";
-const WEBSOCKET_ADDRESS: &str = "127.0.0.1:40001";
+use crate::{notifications, secrets};
 
 const INDEX_HTML: &str = include_str!("client/client.html");
 const CLIENT_JS: &str = include_str!("client/client.js");
@@ -38,26 +35,26 @@ impl Client {
 static CONNECTED_CLIENTS: Mutex<Vec<Arc<RwLock<Client>>>> = Mutex::new(Vec::new());
 
 pub fn start() {
+  let server_ip = secrets::get_data(secrets::Keys::ServerIP);
+  let http_address = format!("{}:40000", server_ip);
+  let websocket_address = format!("{}:40001", server_ip);
+
   // Create client thread
   thread::Builder::new()
     .name("Clients".to_string())
-    .spawn(move || {
-      update_new_clients();
-    })
+    .spawn(move || update_new_clients(http_address))
     .expect("Spawning client handler thread failed!");
 
   // Create client websocket thread
   thread::Builder::new()
     .name("Clients websocekts".to_string())
-    .spawn(move || update_websockets())
+    .spawn(move || update_websockets(websocket_address))
     .expect("Spawning client websocket thread failed!");
 }
 
-fn update_new_clients() {
-  log::info!("Client server start");
-
-  let server = Server::http(HTML_ADDRESS).unwrap();
-  log::info!("Client server started at: http://{}", HTML_ADDRESS);
+fn update_new_clients(http_address: String) {
+  log::info!("Client server started at: http://{}", &http_address);
+  let server = Server::http(http_address).unwrap();
 
   for request in server.incoming_requests() {
     match request.url() {
@@ -92,10 +89,10 @@ fn update_new_clients() {
   }
 }
 
-fn update_websockets() {
+fn update_websockets(websocket_address: String) {
   log::info!("Client websocket start");
 
-  let listener = TcpListener::bind(WEBSOCKET_ADDRESS).unwrap();
+  let listener = TcpListener::bind(websocket_address).unwrap();
   let read_timeout = Some(Duration::from_millis(10));
   for stream in listener.incoming() {
     thread::spawn(move || {
