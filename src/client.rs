@@ -79,6 +79,12 @@ fn update_new_clients(http_address: String) {
           .respond(resp)
           .expect("Couldn't respond to the request");
       }
+      "/sub_video" => {
+        let resp = Response::from_data(notifications::DEFAULT_SUB_VIDEO);
+        request
+          .respond(resp)
+          .expect("Couldn't respond to the request");
+      }
       _ => {
         let response = Response::new_empty(StatusCode(204));
         request

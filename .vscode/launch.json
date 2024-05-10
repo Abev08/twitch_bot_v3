@@ -6,7 +6,7 @@
   "configurations": [
     {
       "name": "Debug",
-      "type": "cppvsdbg",
+      "type": "lldb",
       "request": "launch",
       "preLaunchTask": "rust: cargo build",
       "program": "${workspaceFolder}/target/debug/twitch_bot_v3.exe",

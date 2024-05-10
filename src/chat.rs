@@ -456,6 +456,9 @@ pub fn send_message_response(message: &String, message_id: &String) {
 
 fn check_for_commands(metadata: &Metadata, msg: &str) {
   match msg {
+    "!bot" => {
+      send_message_response(&"The bot is under development, you can check it out at https://github.com/Abev08/twitch_bot_v3".to_string(), &metadata.message_id);
+    }
     // "get system time" => {
     //   send_message_response(&format!("{:?}", SystemTime::now()), &metadata.message_id);
     // }

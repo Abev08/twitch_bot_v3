@@ -4,11 +4,11 @@ use tungstenite::{client::IntoClientRequest, Message};
 
 use crate::{database, notifications, secrets};
 
-const WEBSOCKETURL: &str = "wss://eventsub.wss.twitch.tv/ws";
-const SUBSCRIPTIONURL: &str = "https://api.twitch.tv/helix/eventsub/subscriptions";
+// const WEBSOCKETURL: &str = "wss://eventsub.wss.twitch.tv/ws";
+// const SUBSCRIPTIONURL: &str = "https://api.twitch.tv/helix/eventsub/subscriptions";
 // Test url with Twitch CLI client
-// const WEBSOCKETURL: &str = "ws://127.0.0.1:8080/ws";
-// const SUBSCRIPTIONURL: &str = "http://127.0.0.1:8080/eventsub/subscriptions";
+const WEBSOCKETURL: &str = "ws://127.0.0.1:8080/ws";
+const SUBSCRIPTIONURL: &str = "http://127.0.0.1:8080/eventsub/subscriptions";
 
 pub fn start() {
   // Create events thread
@@ -93,6 +93,10 @@ fn update() {
                   // Channel follow
                   println!(">> New follow from {}.", user_name);
                   notifications::add_follow_notification(user_name);
+                } else if msg["payload"]["subscription"]["type"] == "channel.subscribe" {
+                  // Channel subscription
+                  println!(">> New sub from {}.", user_name);
+                  notifications::add_subscription_notification(user_name);
                 } else {
                   // Unrecognized notification
                   println!("{}", msg);

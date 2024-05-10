@@ -4,6 +4,7 @@ use serde_json::json;
 
 use crate::{chat, client};
 
+#[derive(Copy, Clone)]
 enum NotificationType {
   NONE,
   FOLLOW,
@@ -16,6 +17,12 @@ enum NotificationType {
   CHANNELREDEMPTION,
 }
 
+impl NotificationType {
+  pub fn index(&self) -> usize {
+    *self as usize
+  }
+}
+
 struct Notification {
   thetype: NotificationType,
   message_chat: Option<String>,
@@ -26,6 +33,8 @@ struct Notification {
   played_sound_volume: f32,
   played_video: Option<String>, // name of the video that server would be asked to provide
   played_video_volume: f32,
+  played_video_position: (i32, i32),
+  played_video_size: (i32, i32),
 }
 
 impl Default for Notification {
@@ -40,11 +49,14 @@ impl Default for Notification {
       played_sound_volume: 1.0,
       played_video: None,
       played_video_volume: 1.0,
+      played_video_position: (0, 0),
+      played_video_size: (0, 0),
     }
   }
 }
 
 impl Notification {
+  /// Starts this notification.
   fn start(&self) -> bool {
     if self.message_chat.is_some() {
       let msg = self.message_chat.clone().unwrap();
@@ -54,22 +66,47 @@ impl Notification {
     // FIXME: missing data to be sent to the client
     return client::send_text_message(
       &json!({
-        "type": 1,
+        "type": self.thetype.index(),
+
         "message_displayed": self.message_displayed,
         "message_displayed_position": self.message_displayed_position,
+
         "played_sound": self.played_sound,
         "played_sound_volume": self.played_sound_volume,
+
         "played_video": self.played_video,
         "played_video_volume": self.played_video_volume,
+        "played_video_position": self.played_video_position,
+        "played_video_size": self.played_video_size,
       })
       .to_string(),
     );
   }
+
+  /// Plays next step of this notification.
+  fn next_step(&self) -> bool {
+    // TODO: Notification could depend on action queue.
+    // A notification could have multiple actions like:
+    // - send chat message,
+    // - play sound,
+    // - play video,
+    // - etc.
+    // The action queue could play each action in sequence.
+    // It would be good for notification configurations.
+    // Also each action could have finished flag
+    // and actions could wait for other actions to finish.
+    return true;
+  }
 }
 
 pub const DEFAULT_NOTIFICATION_SOUND: &[u8] = include_bytes!("../resources/tone1.wav");
+pub const DEFAULT_SUB_VIDEO: &[u8] = include_bytes!("../resources/peepoHey.mp4");
+
 pub static NOTIFICATION_FINISHED: Mutex<[bool; 1]> = Mutex::new([false]);
+/// Currently queued notifications.
 static QUEUE: Mutex<VecDeque<Notification>> = Mutex::new(VecDeque::new());
+/// Previously played notifications.
+static PREVIOUS_NOTIFICATIONS: Mutex<VecDeque<Notification>> = Mutex::new(VecDeque::new());
 
 pub fn start() {
   // Create notifications thread
@@ -97,6 +134,13 @@ fn update() {
           started = true;
           NOTIFICATION_FINISHED.lock().unwrap()[0] = false;
         }
+
+        // Add the notification to previously played
+        let mut prev = PREVIOUS_NOTIFICATIONS.lock().unwrap();
+        prev.push_back(current_notificaiton);
+        while prev.len() > 20 {
+          prev.pop_front();
+        }
       }
     } else {
       if NOTIFICATION_FINISHED.lock().unwrap()[0] {
@@ -115,17 +159,23 @@ pub fn add_follow_notification(user_name: &str) {
     message_chat: Some(format!("@{} thank you for following!", user_name)),
     message_displayed: Some(format!("New follower {}!", user_name)),
     message_displayed_position: (100, 200),
-    played_sound: Some("follow_sound".to_owned()),
+    played_sound: Some("follow_sound".to_string()),
     played_sound_volume: 0.2,
     ..Default::default()
   };
   queue.push_back(notification);
 }
 
-pub fn add_subscription_notification() {
+pub fn add_subscription_notification(user_name: &str) {
   let mut queue = QUEUE.lock().unwrap();
   let notification = Notification {
     thetype: NotificationType::SUBSCRIPTION,
+    message_displayed: Some(format!("{} just subscribed!", user_name)),
+    message_displayed_position: (100, 200),
+    played_video: Some("sub_video".to_string()),
+    played_video_volume: 0.5,
+    played_video_position: (100, 400),
+    played_video_size: (200, 200),
     ..Default::default()
   };
   queue.push_back(notification);
